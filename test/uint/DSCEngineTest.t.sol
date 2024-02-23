@@ -98,8 +98,8 @@ contract DSCEngineTest is Test {
         assertEq(expectedDepositedCollateral, AMOUNT_COLLATERAL);
     }
 
-    function testRevertsIfMintedDscBreaksHealthFactor() public {
-        uint256 overageMintDscAmount = 10001 ether;
+    function testRevertsIfDepositCollateralAndMintDscBreaksHealthFactor() public {
+        uint256 overageMintDscAmount = dscEngine.getUsdValue(weth, AMOUNT_COLLATERAL);
         uint256 expectedHealthFactor =
             dscEngine.calculateHealthFactor(overageMintDscAmount, dscEngine.getUsdValue(weth, AMOUNT_COLLATERAL));
         vm.startPrank(USER);
@@ -145,5 +145,48 @@ contract DSCEngineTest is Test {
         vm.expectRevert(DSCEngine.DSCEngine__MintFailed.selector);
         mockDscEngine.depositCollateralAndMintDsc(weth, AMOUNT_COLLATERAL, AMOUNT_TO_MINT);
         vm.stopPrank();
+    }
+
+    function testRevertsIfMintDscBreaksHealthFactor() public depositedCollateral {
+        uint256 overageMintDscAmount = dscEngine.getUsdValue(weth, AMOUNT_COLLATERAL);
+        uint256 expectedHealthFactor =
+            dscEngine.calculateHealthFactor(overageMintDscAmount, dscEngine.getUsdValue(weth, AMOUNT_COLLATERAL));
+        vm.startPrank(USER);
+        vm.expectRevert(abi.encodeWithSelector(DSCEngine.DSCEngine__BreaksHealthFactor.selector, expectedHealthFactor));
+        dscEngine.mintDsc(overageMintDscAmount);
+        vm.stopPrank();
+    }
+
+    function testCanMintDsc() public depositedCollateral {
+        vm.prank(USER);
+        dscEngine.mintDsc(AMOUNT_TO_MINT);
+
+        uint256 userBalance = dsc.balanceOf(USER);
+        assertEq(userBalance, AMOUNT_TO_MINT);
+    }
+
+    /////////////////////
+    // burnDsc Tests  ///
+    /////////////////////
+    function testRevertsIfBurnAmountIsZero() public depositedCollateralAndMintDsc {
+        vm.prank(USER);
+        vm.expectRevert(DSCEngine.DSCEngine__NeedsMoreThanZero.selector);
+        dscEngine.burnDsc(0);
+    }
+
+    function testCanBurnAmountThanUserHas() public {
+        vm.prank(USER);
+        vm.expectRevert();
+        dscEngine.burnDsc(1);
+    }
+
+    function testCanBurnDsc() public depositedCollateralAndMintDsc {
+        vm.startPrank(USER);
+        dsc.approve(address(dscEngine), AMOUNT_TO_MINT);
+        dscEngine.burnDsc(AMOUNT_TO_MINT);
+        vm.stopPrank();
+
+        uint256 userBalance = dsc.balanceOf(USER);
+        assertEq(userBalance, 0);
     }
 }
